@@ -1,0 +1,93 @@
+From 2826a1938198132fb7b7db74bb58b447a4663589 Mon Sep 17 00:00:00 2001
+From: Luke Carrier <luke@carrier.im>
+Date: Mon, 13 Oct 2014 23:52:55 +0100
+Subject: [PATCH 2/2] Handle custom role/permission attributes on redisplayed
+ questions.
+
+---
+ totara/appraisal/lib.php | 27 ++++++++++++++++++++++++++-
+ totara/question/lib.php  | 17 +++++++++++++----
+ 2 files changed, 39 insertions(+), 5 deletions(-)
+
+diff --git a/totara/appraisal/lib.php b/totara/appraisal/lib.php
+index e4bc064..1fdc4d1 100644
+--- a/totara/appraisal/lib.php
++++ b/totara/appraisal/lib.php
+@@ -549,11 +549,34 @@ class appraisal {
+      * @return stdClass
+      */
+     public function import_answers($pageid, stdClass $questdata, appraisal_role_assignment $roleassignment) {
++        global $DB;
++
+         $questions = appraisal_question::fetch_page_role($pageid, $roleassignment);
+         $answers = new stdClass();
++
+         foreach ($questions as $question) {
++            if (property_exists($question, 'redisplayedby')
++                    && $roleassignment->appraisalrole != $question->redisplayedby->param2) {
++                $redisplayroleassignment = $DB->get_record('appraisal_role_assignment', array(
++                    'appraisalrole'             => $question->redisplayedby->param2,
++                    'appraisaluserassignmentid' => $roleassignment->appraisaluserassignmentid,
++                ));
++                $redisplayquestdata = $DB->get_record("appraisal_quest_data_{$this->id}", array(
++                    'appraisalroleassignmentid' => $redisplayroleassignment->id,
++                ));
++
++                foreach ($redisplayquestdata as $key => $value) {
++                    $keydata       = substr($key, 0, 5);
++                    $keyquestionid = substr($key, 5, strlen($question->id));
++                    if ($keydata === 'data_' && $keyquestionid == $question->id) {
++                        $questdata->{$key} = $value;
++                    }
++                }
++            }
++
+             $answers = $question->get_element()->set_as_db($questdata)->get_as_form($answers, true);
+         }
++
+         return $answers;
+     }
+ 
+@@ -3394,7 +3417,9 @@ class appraisal_question extends question_storage {
+         foreach ($records as $record) {
+             $question = new appraisal_question($record->id, $roleassignment);
+             if ($question->get_element()->get_type() == 'redisplay') {
+-                $question = new appraisal_question($question->get_element()->param1, $roleassignment);
++                $realquestion = new appraisal_question($question->get_element()->param1, $roleassignment);
++                $realquestion->redisplayedby = $question;
++                $question = $realquestion;
+             }
+             $questions[] = $question;
+         }
+diff --git a/totara/question/lib.php b/totara/question/lib.php
+index 50f047e..f6668cb 100644
+--- a/totara/question/lib.php
++++ b/totara/question/lib.php
+@@ -973,11 +973,20 @@ abstract class question_storage {
+      * @param mixed $value
+      */
+     public function __set($name, $value) {
+-        if (in_array($name, array('param1', 'param2', 'param3', 'param4', 'param5'))) {
+-            $this->$name = json_encode($value);
+-            return;
++        switch ($name) {
++            case 'param1':
++            case 'param2':
++            case 'param3':
++            case 'param4':
++            case 'param5':
++                $this->$name = json_encode($value);
++                break;
++            case 'redisplayedby':
++                $this->$name = $value;
++                break;
++            default:
++                throw new question_exception('Property not found: '.$name);
+         }
+-        throw new question_exception('Property not found: '.$name);
+     }
+ 
+     /**
+-- 
+1.9.3
+

@@ -1,0 +1,99 @@
+From 3837a579f782c1a756d77645927562cc92a11b21 Mon Sep 17 00:00:00 2001
+From: Luke Carrier <luke@carrier.im>
+Date: Mon, 13 Oct 2014 22:32:12 +0100
+Subject: [PATCH 1/2] Appraisals: redisplay answer from other role with
+ alternate permissions
+
+This is only the initial round of changes, and adds editing
+functionality to redisplayed answer questions. The next stage is to
+alter the question display process such that the role information
+associated with the redisplay datatype takes precedence over that within
+the redisplayed question.
+---
+ totara/question/field/redisplay.class.php   | 28 ++++++++++++++++++++++++++--
+ totara/question/lang/en/totara_question.php |  2 ++
+ 2 files changed, 28 insertions(+), 2 deletions(-)
+
+diff --git a/totara/question/field/redisplay.class.php b/totara/question/field/redisplay.class.php
+index 28b0464..7b3ae95 100644
+--- a/totara/question/field/redisplay.class.php
++++ b/totara/question/field/redisplay.class.php
+@@ -96,6 +96,28 @@ class question_redisplay extends question_base{
+             $form->addRule('linkedquestion', get_string('required'), 'required');
+             $form->addHelpButton('linkedquestion', 'redisplay', 'totara_question');
+             $select->setMultiple(false);
++
++            // We can only do this after the associated question has been set
++            if ($this->param1 === null) {
++                $form->addElement('static', 'linkedrole',
++                                  get_string('redisplayrole', 'totara_question'),
++                                  get_string('redisplayroleeditaftersave', 'totara_question'));
++            } else {
++                $allroles = appraisal::get_roles();
++                $roles    = array();
++
++                $linkedquestionelement = appraisal::get_redisplay_question_element($this->param1);
++
++                foreach ($allroles as $role => $name) {
++                    if ($linkedquestionelement->roleinfo[$role][appraisal::ACCESS_CANANSWER]) {
++                        $roles[$role] = get_string($name, 'totara_appraisal');
++                    }
++                }
++
++                $select = $form->addElement('select', 'linkedrole',
++                                            get_string('redisplayrole', 'totara_question'),
++                                            $roles);
++            }
+         }
+     }
+ 
+@@ -111,6 +133,7 @@ class question_redisplay extends question_base{
+             $toform = new stdClass();
+         }
+         $toform->linkedquestion = $this->param1;
++        $toform->linkedrole     = $this->param2;
+         return $toform;
+     }
+ 
+@@ -123,6 +146,7 @@ class question_redisplay extends question_base{
+      */
+     public function define_set(stdClass $fromform) {
+         $this->param1 = (int)$fromform->linkedquestion;
++        $this->param2 = (int)$fromform->linkedrole;
+ 
+         if (!isset($fromform->roles)) {
+             $module = $this->prefix;
+@@ -149,7 +173,7 @@ class question_redisplay extends question_base{
+      * @return bool
+      */
+     public function requires_permissions() {
+-        return false;
++        return true;
+     }
+ 
+ 
+@@ -198,7 +222,7 @@ class question_redisplay extends question_base{
+     }
+ 
+     public function is_answerable() {
+-        print_error('error:invalidfunctioncalledinredisplay', 'totara_question');
++        return false;
+     }
+ 
+ }
+diff --git a/totara/question/lang/en/totara_question.php b/totara/question/lang/en/totara_question.php
+index ca9f9a1..c5fd809 100644
+--- a/totara/question/lang/en/totara_question.php
++++ b/totara/question/lang/en/totara_question.php
+@@ -159,6 +159,8 @@ Redisplaying a future question or another redisplay question is not possible (th
+ Answers or information entered in the original question will be shown in the redisplayed question. Changes made
+ in the redisplayed question will be saved over the original answer. If the original question is locked for a particular
+ user then the redisplayed question will also be locked for that user.';
++$string['redisplayrole'] = 'Redisplay role';
++$string['redisplayroleeditaftersave'] = 'After saving, the role whose answer is redisplayed may be modified. It defaults to the user who is reviewing the appraisal.';
+ $string['removeconfirm'] = 'Are you sure want to remove this item?';
+ $string['reorder'] = 'Change order';
+ $string['reviewcompfromplanassignmissing'] = 'This competency has been removed from the learning plan';
+-- 
+1.9.3
+
